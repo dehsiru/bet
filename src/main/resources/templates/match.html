@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="el" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Match Free Bet</title>
+    <link rel="stylesheet" th:href="@{/style.css}">
+</head>
+<body>
+<main>
+    <a th:href="@{/(bookmakers=${bookmakers}, maxAge=${maxAge}, includeLive=${includeLive})}">← Πίσω στη λίστα</a>
+
+    <div th:if="${first == null}" class="card" style="margin-top:16px">
+        Δεν βρέθηκαν αποδόσεις για αυτόν τον αγώνα με τα τρέχοντα φίλτρα (εταιρείες / ηλικία).
+    </div>
+
+    <th:block th:if="${first != null}">
+        <h1 style="margin-top:12px"><span th:text="${first.home()}"></span> – <span th:text="${first.away()}"></span></h1>
+        <div class="muted">
+            <span th:text="${first.sport()}"></span> ·
+            <span th:text="${first.startTime() != null} ? ${#temporals.format(first.startTime().atZone(T(java.time.ZoneId).of('Europe/Athens')), 'dd/MM HH:mm')} : '-'"></span> ·
+            αποδόσεις φορτωμένες στις
+            <b th:text="${#temporals.format(fetchedAt.atZone(T(java.time.ZoneId).of('Europe/Athens')), 'HH:mm:ss')}"></b>.
+            Ο υπολογισμός γίνεται στον browser, χωρίς κανένα request.
+        </div>
+
+        <div class="bar card" style="display:flex;flex-wrap:wrap;gap:12px;align-items:end;margin:20px 0">
+            <label>Ποσό free bet (€)
+                <input id="fb-amount" type="number" step="0.5" min="0.5" value="10">
+            </label>
+            <label>Εταιρεία free bet
+                <select id="fb-bookmaker">
+                    <option value="">— όλες (προτάσεις) —</option>
+                    <option th:each="o : ${event}" th:value="${o.bookmaker()}" th:text="${o.bookmakerTitle()}"></option>
+                </select>
+            </label>
+            <label>Αποτέλεσμα
+                <select id="fb-outcome">
+                    <option th:each="oc : ${outcomes}" th:value="${oc}" th:text="${oc}"></option>
+                </select>
+            </label>
+            <span class="muted">ή πάτα κατευθείαν σε μια απόδοση στον πίνακα</span>
+        </div>
+
+        <div id="fb-plan" class="card" hidden></div>
+
+        <h2>Όλες οι αποδόσεις</h2>
+        <div class="table-wrap">
+            <table>
+                <thead>
+                <tr>
+                    <th>Εταιρεία</th>
+                    <th th:each="oc : ${outcomes}" th:text="${oc}"></th>
+                    <th class="num">Ηλικία</th>
+                </tr>
+                </thead>
+                <tbody>
+                <tr th:each="o : ${event}">
+                    <td>
+                        <span th:text="${o.bookmakerTitle()}"></span>
+                        <span class="bk" th:if="${groupByBookmaker.containsKey(o.bookmaker())}"
+                              th:text="'(' + ${groupByBookmaker.get(o.bookmaker())} + ')'"></span>
+                    </td>
+                    <td th:each="oc : ${outcomes}">
+                        <a th:if="${o.outcomes().containsKey(oc)}" href="#" class="odd-link"
+                           th:classappend="${bestKeys.contains(o.bookmaker() + '|' + oc)} ? 'best'"
+                           th:attr="data-bk=${o.bookmaker()}, data-outcome=${oc}"
+                           th:text="${#numbers.formatDecimal(o.outcomes().get(oc), 1, 2, 'POINT')}"
+                           title="Βάλε εδώ το free bet"></a>
+                    </td>
+                    <td class="num"><span class="age" th:classappend="${o.ageSeconds() > 180} ? 'stale'" th:text="${o.ageText()}"></span></td>
+                </tr>
+                </tbody>
+            </table>
+        </div>
+        <div class="muted" th:if="${best != null}" style="margin-top:6px">
+            Με πράσινο περίγραμμα: ο καλύτερος συνδυασμός για arbitrage (S =
+            <span th:text="${#numbers.formatDecimal(best.inverseSum(), 1, 4, 'POINT')}"></span>,
+            <span th:text="${#numbers.formatDecimal(best.profitPercent(), 1, 2, 'POINT')}"></span>%).
+        </div>
+
+        <h2 id="fb-suggestions-title">Πού να βάλεις το free bet</h2>
+        <div class="table-wrap">
+            <table>
+                <thead>
+                <tr><th>Free bet</th><th>Κάλυψη</th><th class="num">Μετρητά</th><th class="num">Σίγουρο κέρδος</th><th class="num">%</th></tr>
+                </thead>
+                <tbody id="fb-suggestions"></tbody>
+            </table>
+        </div>
+
+        <script th:inline="javascript">
+            window.FREEBET_DATA = /*[[${calcData}]]*/ null;
+        </script>
+        <script th:src="@{/freebet.js}"></script>
+    </th:block>
+</main>
+</body>
+</html>

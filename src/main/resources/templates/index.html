@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="el" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Arbitrage Scanner</title>
+    <link rel="stylesheet" th:href="@{/style.css}">
+</head>
+<body>
+<main>
+    <h1>Arbitrage scanner</h1>
+    <div class="muted">
+        Για κάθε αγώνα διαλέγουμε την καλύτερη απόδοση ανά αποτέλεσμα (1/X/2), με το πολύ μία εταιρεία ανά όμιλο.
+        S = Σ 1/απόδοση, κέρδος = 1/S − 1. Ταξινόμηση από το <b>χαμηλότερο S</b>. S &lt; 1 ⇒ arbitrage.
+        Πάτα σε έναν αγώνα για όλες τις αποδόσεις και τον υπολογιστή free bet.
+    </div>
+
+    <form class="bar" method="get" th:action="@{/}">
+        <label>Ποντάρισμα (€)
+            <input type="number" name="stake" step="1" min="1" th:value="${stake}">
+        </label>
+        <label>Πρωτάθλημα
+            <select name="sport">
+                <option value="" th:selected="${sport == ''}">Όλα</option>
+                <option th:each="s : ${sports}" th:value="${s}" th:text="${s}" th:selected="${s == sport}"></option>
+            </select>
+        </label>
+        <label>Μέγ. ηλικία απόδοσης (λεπτά)
+            <input type="number" name="maxAge" min="0" placeholder="χωρίς όριο" th:value="${maxAge}">
+        </label>
+        <label class="grow">Εταιρείες (κόμμα, κενό = όλες)
+            <input type="text" name="bookmakers" th:value="${bookmakers}">
+        </label>
+        <label class="inline"><input type="checkbox" name="onlyArbs" value="true" th:checked="${onlyArbs}"> Μόνο arbitrage</label>
+        <label class="inline"><input type="checkbox" name="includeLive" value="true" th:checked="${includeLive}"> Και live</label>
+        <button type="submit">Εφαρμογή</button>
+        <button type="submit" name="refresh" value="true" class="secondary">Φρέσκα δεδομένα</button>
+    </form>
+    <details>
+        <summary>Όμιλοι (το πολύ μία εταιρεία από κάθε όμιλο ανά arbitrage)</summary>
+        <div th:each="g : ${groups}"><b th:text="${g.key}"></b>: <span th:text="${#strings.listJoin(g.value, ', ')}"></span></div>
+    </details>
+    <details>
+        <summary>Διαθέσιμες εταιρείες (<span th:text="${availableBookmakers.size()}"></span>)</summary>
+        <span th:text="${#strings.setJoin(availableBookmakers, ', ')}"></span>
+    </details>
+
+    <div class="errors" th:if="${!errors.isEmpty()}">
+        <b>Σφάλματα:</b>
+        <ul><li th:each="e : ${errors}" th:text="${e}"></li></ul>
+    </div>
+
+    <div class="stats">
+        <span>Ενημέρωση: <b th:text="${#temporals.format(fetchedAt.atZone(T(java.time.ZoneId).of('Europe/Athens')), 'HH:mm:ss')}"></b></span>
+        <span th:if="${dailyRemaining != null}">Υπόλοιπο API σήμερα: <b th:text="${dailyRemaining}"></b></span>
+        <span>Αποδόσεις: <b th:text="${oddsCount}"></b></span>
+        <span>Αγώνες: <b th:text="${results.size()}"></b></span>
+        <span>Arbitrage: <b th:text="${arbCount}"></b></span>
+    </div>
+
+    <div class="table-wrap">
+        <table>
+            <thead>
+            <tr>
+                <th>Έναρξη</th>
+                <th>Αγώνας</th>
+                <th>Καλύτερες αποδόσεις → ποντάρισμα</th>
+                <th class="num">Εταιρείες</th>
+                <th class="num">S</th>
+                <th class="num">Κέρδος</th>
+                <th class="num">Επιστροφή</th>
+            </tr>
+            </thead>
+            <tbody>
+            <tr th:if="${results.isEmpty()}"><td colspan="7" class="muted">Δεν βρέθηκαν αγώνες.</td></tr>
+            <tr th:each="r : ${results}" th:classappend="${r.isArbitrage()} ? 'arb'">
+                <td class="bet">
+                    <span th:text="${r.startTime() != null} ? ${#temporals.format(r.startTime().atZone(T(java.time.ZoneId).of('Europe/Athens')), 'dd/MM HH:mm')} : '-'"></span>
+                    <div class="live" th:if="${r.live()}">LIVE</div>
+                </td>
+                <td>
+                    <a th:href="@{/match(id=${r.eventId()}, bookmakers=${bookmakers}, maxAge=${maxAge}, includeLive=${includeLive})}">
+                        <b th:text="${r.home()}"></b> – <b th:text="${r.away()}"></b>
+                    </a>
+                    <div class="bk" th:text="${r.sport()}"></div>
+                </td>
+                <td>
+                    <div class="bet" th:each="b : ${r.bets()}">
+                        <b th:text="${b.outcome()}"></b>
+                        <span th:text="${#numbers.formatDecimal(b.odds(), 1, 2, 'POINT')}"></span>
+                        <span class="bk" th:text="'@ ' + ${b.bookmakerTitle()}"></span>
+                        <span class="age" th:classappend="${b.stale()} ? 'stale'" th:text="'(' + ${b.ageText()} + ')'"
+                              title="Πριν πόσο ανανεώθηκε η απόδοση"></span>
+                        → <span th:text="${#numbers.formatDecimal(b.stake(), 1, 2, 'POINT')} + ' €'"></span>
+                    </div>
+                </td>
+                <td class="num">
+                    <span th:text="${r.betBookmakerCount()}"></span>
+                    <span class="bk" th:text="'/ ' + ${r.bookmakers().size()}"
+                          th:title="'Στα πονταρίσματα / σύνολο εταιρειών με αποδόσεις: ' + ${#strings.setJoin(r.bookmakers(), ', ')}"></span>
+                </td>
+                <td class="num" th:text="${#numbers.formatDecimal(r.inverseSum(), 1, 4, 'POINT')}"></td>
+                <td class="num" th:classappend="${r.profitPercent() > 0} ? 'profit-pos' : 'profit-neg'"
+                    th:text="${#numbers.formatDecimal(r.profitPercent(), 1, 2, 'POINT')} + '%'"></td>
+                <td class="num" th:text="${#numbers.formatDecimal(r.payout(), 1, 2, 'POINT')} + ' €'"></td>
+            </tr>
+            </tbody>
+        </table>
+    </div>
+</main>
+</body>
+</html>
